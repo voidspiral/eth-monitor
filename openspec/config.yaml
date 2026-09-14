@@ -1,32 +1,27 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Standalone HPC host ethernet monitor (this repo), not ClusterHelm, not
+  mpi-monitor, and not a process-level sniffer. Samples ethernet NIC rx/tx
+  rates into host-level JSONL. Tech stack: Python 3.10+, stdlib first;
+  matplotlib optional for PNG plots.
+  TDD: write failing tests before implementation (unittest).
+  design.md body stays English. Propose-stage replies include a Chinese
+  translation of design.md.
+  No hardcoded user home paths. Config and CLI flags only.
+  Compute nodes may lack a deployed copy of this package; remote sampling
+  uses an inline payload over SSH.
+  Neighbor repos for context only: mpi-monitor (process CPU/RSS/IO collect
+  contract) and agent-sidecar (orchestrator that will later import
+  collect_loop). Do not copy ClusterHelm control-plane code.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+rules:
+  proposal:
+    - Always include a "Non-goals" section
+    - Explicitly exclude ClusterHelm control-plane integration
+  design:
+    - Keep the design.md body in English
+    - Record TDD as the implementation method
+  tasks:
+    - Order work as failing tests first, then implementation
+    - Break tasks into chunks of max 2 hours
