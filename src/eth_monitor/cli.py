@@ -18,6 +18,7 @@ def _add_collect_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--stop-file", required=True, type=Path)
     p.add_argument("--interval", type=float, default=1.0)
     p.add_argument("--host", default=socket.gethostname().split(".")[0])
+    p.add_argument("--match")
     p.add_argument("--proc-net", type=Path, default=None)
     p.add_argument("--sys-class-net", type=Path, default=None)
 
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     wrap_p.add_argument("--hosts", required=True, help="comma-separated host list (required)")
     wrap_p.add_argument("--output-dir", required=True, type=Path)
     wrap_p.add_argument("--interval", type=float, default=1.0)
+    wrap_p.add_argument("--match", help="optional /proc comm substring for pid TCP sampling")
     wrap_p.add_argument("--join-timeout", type=float, default=5.0)
     wrap_p.add_argument("--ready-timeout", type=float, default=30.0)
     wrap_p.add_argument("--ssh-user")
@@ -77,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             hosts=hosts,
             output_dir=args.output_dir,
             interval=args.interval,
+            match=args.match,
             join_timeout=args.join_timeout,
             ready_timeout=args.ready_timeout,
             ssh_user=args.ssh_user,
@@ -91,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
             stop_file=args.stop_file,
             interval=args.interval,
             host=args.host,
+            match=args.match,
             proc_net=args.proc_net,
             sys_class_net=args.sys_class_net,
         )

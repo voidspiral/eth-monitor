@@ -16,11 +16,11 @@
 ## 4. Plot split
 
 - [x] 4.1 Write failing tests that `{host}_pid{pid}_net.jsonl` yields `{host}_pid{pid}_tcp_{rx,tx}_bps.png` and is not treated as host ethernet; existing host charts still pass; verify `python3 -m unittest tests.test_plot` fails
-- [ ] 4.2 Update `eth_monitor.plot` filename dispatch and verify `python3 -m unittest tests.test_plot` passes
+- [x] 4.2 Update `eth_monitor.plot` filename dispatch and verify `python3 -m unittest tests.test_plot` passes
 
 ## 5. CLI wrap / SSH match
 
-- [ ] 5.1 Write failing tests that wrap/collect accept `--match` and forward it to local spawn and remote collect argv; omit match keeps previous behavior; verify `python3 -m unittest tests.test_cli tests.test_wrap` fails
+- [x] 5.1 Write failing tests that wrap/collect accept `--match` and forward it to local spawn and remote collect argv; omit match keeps previous behavior; verify `python3 -m unittest tests.test_cli tests.test_wrap` fails
 - [ ] 5.2 Implement CLI/wrap/remote tar marker merge into `meta.json` and verify `python3 -m unittest tests.test_cli tests.test_wrap` passes
 
 ## 6. Docs and full suite

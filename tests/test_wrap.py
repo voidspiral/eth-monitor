@@ -45,13 +45,18 @@ class HangHandle:
 
 class TestWrapHosts(unittest.TestCase):
     @staticmethod
-    def _series_archive(name: str = "cn2_net.jsonl") -> str:
+    def _series_archive(name: str = "cn2_net.jsonl", extra_marker: bool = False) -> str:
         payload = b'{"host":"cn2","iface":"eth0","eth_rx_bps":0}\n'
         stream = io.BytesIO()
         with tarfile.open(fileobj=stream, mode="w") as archive:
             info = tarfile.TarInfo(f"series/{name}")
             info.size = len(payload)
             archive.addfile(info, io.BytesIO(payload))
+            if extra_marker:
+                marker = b"true\n"
+                minfo = tarfile.TarInfo("tcp_info_partial")
+                minfo.size = len(marker)
+                archive.addfile(minfo, io.BytesIO(marker))
         return base64.b64encode(stream.getvalue()).decode()
 
     def test_localhost_aliases_are_local(self) -> None:
@@ -64,9 +69,11 @@ class TestWrapHosts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ssh_calls: list[tuple] = []
             local_calls: list[str] = []
+            captured: dict[str, str | None] = {}
 
             def spawn_local(**kwargs):
                 local_calls.append(kwargs["host"])
+                captured["match"] = kwargs.get("match")
                 return _DoneHandle()
 
             def ssh_run(host, command, **kwargs):
@@ -87,6 +94,29 @@ class TestWrapHosts(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(local_calls, ["cn1"])
             self.assertEqual(ssh_calls, [])
+            self.assertIsNone(captured["match"])
+
+    def test_local_spawn_forwards_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            seen: dict[str, str | None] = {}
+
+            def spawn_local(**kwargs):
+                seen["match"] = kwargs.get("match")
+                return _DoneHandle()
+
+            code = wrap(
+                ["true"],
+                hosts=["cn1"],
+                output_dir=Path(tmp),
+                local_host="cn1",
+                match="app",
+                run_command=lambda _c: 0,
+                spawn_local=spawn_local,
+                plot=False,
+                join_timeout=0.2,
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(seen["match"], "app")
 
     def test_remote_host_uses_ssh_and_fetches_net_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,6 +148,35 @@ class TestWrapHosts(unittest.TestCase):
             self.assertNotIn("--match", start)
             series = Path(tmp) / "run-test/series/cn2_net.jsonl"
             self.assertTrue(series.is_file())
+
+    def test_remote_host_forwards_match_and_partial_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            commands: list[str] = []
+
+            def ssh_run(host, command, **kwargs):
+                commands.append(command)
+                stdout = self._series_archive(extra_marker=True) if "base64" in command else "OK\n"
+                return subprocess.CompletedProcess(["ssh"], 0, stdout=stdout, stderr="")
+
+            code = wrap(
+                ["true"],
+                hosts=["cn2"],
+                output_dir=Path(tmp),
+                local_host="cn1",
+                match="app",
+                run_command=lambda _c: 0,
+                spawn_local=lambda **_k: _DoneHandle(),
+                ssh_run=ssh_run,
+                plot=False,
+                join_timeout=0.5,
+                run_id="run-match",
+            )
+            self.assertEqual(code, 0)
+            start = next(c for c in commands if "setsid bash -c" in c)
+            self.assertIn("--match", start)
+            self.assertIn("app", start)
+            meta = json.loads((Path(tmp) / "run-match/meta.json").read_text())
+            self.assertTrue(meta.get("tcp_info_partial"))
 
     def test_join_is_bounded_and_stop_file_written(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

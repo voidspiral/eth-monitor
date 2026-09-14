@@ -88,6 +88,7 @@ def default_spawn_local(
     stop_file: Path,
     interval: float,
     host: str,
+    match: str | None = None,
 ) -> CollectorHandle:
     cmd = [
         sys.executable,
@@ -103,6 +104,8 @@ def default_spawn_local(
         "--host",
         host,
     ]
+    if match:
+        cmd += ["--match", match]
     env = os.environ.copy()
     src = str(Path(__file__).resolve().parents[1])
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
@@ -141,6 +144,7 @@ def _start_remote_collector(
     *,
     run_id: str,
     interval: float,
+    match: str | None,
     ssh_run: SshRun,
     user: str | None,
     identity: str | None,
@@ -148,19 +152,20 @@ def _start_remote_collector(
 ) -> str:
     remote_root = f"/tmp/eth-monitor/{run_id}/{host}"
     mkdir = f"mkdir -p {shlex.quote(remote_root + '/series')}"
-    payload = remote_cmd(
-        [
-            "collect",
-            "--output-dir",
-            remote_root,
-            "--stop-file",
-            f"{remote_root}/stop",
-            "--interval",
-            str(interval),
-            "--host",
-            host,
-        ]
-    )
+    argv = [
+        "collect",
+        "--output-dir",
+        remote_root,
+        "--stop-file",
+        f"{remote_root}/stop",
+        "--interval",
+        str(interval),
+        "--host",
+        host,
+    ]
+    if match:
+        argv += ["--match", match]
+    payload = remote_cmd(argv)
     start = (
         f"{mkdir} && (setsid bash -c {shlex.quote(payload)} "
         f">/dev/null 2>{shlex.quote(remote_root + '/collect.err')} </dev/null & "
@@ -182,7 +187,8 @@ def _remote_finalize_command(remote_root: str) -> str:
         f"touch {stop}; "
         f"pid=$(cat {pid_file} 2>/dev/null || true); "
         'if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; fi; '
-        f"tar -C {root} -cf - series collect.err 2>/dev/null | base64 | tr -d '\\n'"
+        f"extra=; if [ -f {root}/tcp_info_partial ]; then extra=tcp_info_partial; fi; "
+        f"tar -C {root} -cf - series collect.err $extra 2>/dev/null | base64 | tr -d '\\n'"
     )
 
 
@@ -208,6 +214,8 @@ def _extract_remote_archive(
                 (dest_series / path.name).write_bytes(extracted.read())
             elif path.name == "collect.err" and len(path.parts) == 1:
                 (dest_series.parent / f"{host}.collect.err").write_bytes(extracted.read())
+            elif path.name == "tcp_info_partial" and len(path.parts) == 1:
+                (dest_series.parent / "tcp_info_partial").write_bytes(extracted.read())
 
 
 def _finalize_remote_series(
@@ -269,6 +277,7 @@ def wrap(
     hosts: Sequence[str],
     output_dir: Path,
     interval: float = 1.0,
+    match: str | None = None,
     join_timeout: float = 5.0,
     ready_timeout: float = 30.0,
     ssh_user: str | None = None,
@@ -283,21 +292,22 @@ def wrap(
     if not hosts:
         print("eth-monitor: --hosts is required", file=sys.stderr)
         return 2
+    match = match or None
     run_id = run_id or make_run_id()
     run_dir = Path(output_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "series").mkdir(exist_ok=True)
     stop_file = run_dir / "stop"
-    write_meta(
-        run_dir,
-        {
-            "run_id": run_id,
-            "hosts": list(hosts),
-            "command": list(command),
-            "interval": interval,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
+    meta_start: dict[str, Any] = {
+        "run_id": run_id,
+        "hosts": list(hosts),
+        "command": list(command),
+        "interval": interval,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if match:
+        meta_start["match"] = match
+    write_meta(run_dir, meta_start)
     run_command = run_command or default_run_command
     spawn_local = spawn_local or default_spawn_local
     ssh_run = ssh_run or default_ssh_run
@@ -317,6 +327,7 @@ def wrap(
                     stop_file=stop_file,
                     interval=interval,
                     host=host.split(".")[0],
+                    match=match,
                 )
             )
         except Exception as exc:
@@ -330,6 +341,7 @@ def wrap(
                     host,
                     run_id=run_id,
                     interval=interval,
+                    match=match,
                     ssh_run=ssh_run,
                     user=ssh_user,
                     identity=ssh_identity,
@@ -391,6 +403,11 @@ def wrap(
                 "application_exit_code": exit_code,
                 "collection_status": "complete" if not errors else "partial",
                 "collect_errors": errors,
+                **(
+                    {"tcp_info_partial": True}
+                    if (run_dir / "tcp_info_partial").exists()
+                    else {}
+                ),
             },
         )
     return exit_code

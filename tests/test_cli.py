@@ -104,6 +104,43 @@ class TestCli(unittest.TestCase):
         self.assertEqual(wrapped.call_args.kwargs["run_id"], "fixed-run")
         self.assertFalse(wrapped.call_args.kwargs["plot"])
 
+    def test_wrap_forwards_match(self) -> None:
+        with mock.patch("eth_monitor.cli.wrap", return_value=0) as wrapped:
+            code = main(
+                [
+                    "wrap",
+                    "--hosts",
+                    "cn1",
+                    "--output-dir",
+                    "/tmp/out",
+                    "--match",
+                    "app",
+                    "--no-plot",
+                    "--",
+                    "true",
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(wrapped.call_args.kwargs["match"], "app")
+
+    def test_collect_forwards_match(self) -> None:
+        with mock.patch("eth_monitor.cli.run_collect", return_value=0) as collect:
+            code = main(
+                [
+                    "collect",
+                    "--output-dir",
+                    "/tmp/out",
+                    "--stop-file",
+                    "/tmp/stop",
+                    "--host",
+                    "cn1",
+                    "--match",
+                    "app",
+                ]
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(collect.call_args.kwargs["match"], "app")
+
 
 if __name__ == "__main__":
     unittest.main()
