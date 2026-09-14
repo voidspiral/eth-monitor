@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from eth_monitor.plot import chart_filename, plot_run
+from eth_monitor.plot import chart_filename, pid_chart_filename, plot_run
 
 
 def _net_line(ts: float, host: str, iface: str, rx: float, tx: float) -> str:
@@ -115,6 +115,85 @@ class TestPlotRun(unittest.TestCase):
             self.assertEqual(out, [])
             self.assertTrue(path.is_file())
             self.assertIn("matplotlib", buf.getvalue())
+
+    def test_pid_net_two_tcp_charts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            series = run_dir / "series"
+            series.mkdir()
+            (series / "cn1_pid42_net.jsonl").write_text(
+                json.dumps(
+                    {
+                        "ts": 1.0,
+                        "host": "cn1",
+                        "pid": 42,
+                        "comm": "app",
+                        "tcp_rx_bps": 0.0,
+                        "tcp_tx_bps": 0.0,
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "ts": 2.0,
+                        "host": "cn1",
+                        "pid": 42,
+                        "comm": "app",
+                        "tcp_rx_bps": 10.0,
+                        "tcp_tx_bps": 20.0,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            written: list[str] = []
+
+            def writer(path: Path, xs, ys, ylabel: str) -> None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"PNG")
+                written.append(path.name)
+
+            out = plot_run(run_dir, writer=writer)
+            names = sorted(p.name for p in out)
+            self.assertEqual(
+                names,
+                [
+                    pid_chart_filename("cn1", 42, "tcp_rx_bps"),
+                    pid_chart_filename("cn1", 42, "tcp_tx_bps"),
+                ],
+            )
+            self.assertTrue(all("eth_" not in n for n in written))
+
+    def test_pid_net_does_not_emit_host_eth_charts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            series = run_dir / "series"
+            series.mkdir()
+            (series / "cn1_pid9_net.jsonl").write_text(
+                json.dumps(
+                    {
+                        "ts": 1.0,
+                        "host": "cn1",
+                        "pid": 9,
+                        "comm": "app",
+                        "tcp_rx_bps": 1.0,
+                        "tcp_tx_bps": 2.0,
+                        "iface": "eth0",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            written: list[str] = []
+
+            def writer(path: Path, xs, ys, ylabel: str) -> None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"PNG")
+                written.append(path.name)
+
+            plot_run(run_dir, writer=writer)
+            self.assertTrue(all("eth_" not in n for n in written))
+            self.assertIn(pid_chart_filename("cn1", 9, "tcp_rx_bps"), written)
 
 
 if __name__ == "__main__":

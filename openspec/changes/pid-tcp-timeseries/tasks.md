@@ -11,11 +11,11 @@
 ## 3. Collect loop pid JSONL
 
 - [x] 3.1 Write failing tests: with `--match` writes `series/{host}_pid{pid}_net.jsonl` schema and zero first sample; without match writes no pid files; stop file still exits immediately; verify `python3 -m unittest tests.test_collect` fails
-- [ ] 3.2 Extend `collect_loop` / `run_collect` with optional `match`, pid sampling in the same loop, and `tcp_info_partial` marker; verify `python3 -m unittest tests.test_collect` passes
+- [x] 3.2 Extend `collect_loop` / `run_collect` with optional `match`, pid sampling in the same loop, and `tcp_info_partial` marker; verify `python3 -m unittest tests.test_collect` passes
 
 ## 4. Plot split
 
-- [ ] 4.1 Write failing tests that `{host}_pid{pid}_net.jsonl` yields `{host}_pid{pid}_tcp_{rx,tx}_bps.png` and is not treated as host ethernet; existing host charts still pass; verify `python3 -m unittest tests.test_plot` fails
+- [x] 4.1 Write failing tests that `{host}_pid{pid}_net.jsonl` yields `{host}_pid{pid}_tcp_{rx,tx}_bps.png` and is not treated as host ethernet; existing host charts still pass; verify `python3 -m unittest tests.test_plot` fails
 - [ ] 4.2 Update `eth_monitor.plot` filename dispatch and verify `python3 -m unittest tests.test_plot` passes
 
 ## 5. CLI wrap / SSH match

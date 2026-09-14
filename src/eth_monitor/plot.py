@@ -1,8 +1,9 @@
-"""Plot host-ethernet JSONL series to independently named PNG charts."""
+"""Plot host-ethernet and pid-tcp JSONL series to independently named PNG charts."""
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import defaultdict
 from collections.abc import Callable
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any, TextIO
 
 METRICS = ("eth_rx_bps", "eth_tx_bps")
+PID_METRICS = ("tcp_rx_bps", "tcp_tx_bps")
+_PID_NET_RE = re.compile(r"^(?P<host>.+)_pid(?P<pid>\d+)_net\.jsonl$")
 
 ChartWriter = Callable[[Path, list[float], list[float], str], None]
 
@@ -18,8 +21,16 @@ def chart_filename(host: str, iface: str, metric: str) -> str:
     return f"{host}_{iface}_{metric}.png"
 
 
+def pid_chart_filename(host: str, pid: int, metric: str) -> str:
+    return f"{host}_pid{pid}_{metric}.png"
+
+
 def is_net_series(name: str) -> bool:
-    return name.endswith("_net.jsonl")
+    return name.endswith("_net.jsonl") and "_pid" not in name
+
+
+def is_pid_net_series(name: str) -> bool:
+    return _PID_NET_RE.match(name) is not None
 
 
 def load_samples(path: Path) -> list[dict[str, Any]]:
@@ -78,6 +89,9 @@ def plot_run(
         writer = matplotlib_writer
 
     for path in sorted(series_dir.glob("*.jsonl")):
+        if is_pid_net_series(path.name):
+            written.extend(_plot_pid_series(path, charts_dir, writer, warn_stream))
+            continue
         if not is_net_series(path.name):
             continue
         samples = load_samples(path)
@@ -101,4 +115,27 @@ def plot_run(
                 out = charts_dir / chart_filename(host, iface, metric)
                 writer(out, xs, ys, metric)
                 written.append(out)
+    return written
+
+
+def _plot_pid_series(
+    path: Path,
+    charts_dir: Path,
+    writer: ChartWriter,
+    warn_stream: TextIO,
+) -> list[Path]:
+    parsed = _PID_NET_RE.match(path.name)
+    samples = load_samples(path)
+    if parsed is None or not samples:
+        print(f"eth-monitor: skip empty series {path.name}", file=warn_stream)
+        return []
+    host = str(samples[0].get("host") or parsed.group("host"))
+    pid = int(samples[0].get("pid") or parsed.group("pid"))
+    xs = [float(s.get("ts", 0.0)) for s in samples]
+    written: list[Path] = []
+    for metric in PID_METRICS:
+        ys = [float(s.get(metric, 0.0)) for s in samples]
+        out = charts_dir / pid_chart_filename(host, pid, metric)
+        writer(out, xs, ys, metric)
+        written.append(out)
     return written
