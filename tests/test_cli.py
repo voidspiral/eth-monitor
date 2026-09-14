@@ -55,6 +55,8 @@ class TestCli(unittest.TestCase):
         names = zipfile.ZipFile(io.BytesIO(raw)).namelist()
         self.assertIn("eth_monitor/cli.py", names)
         self.assertIn("eth_monitor/collect.py", names)
+        self.assertIn("eth_monitor/proc.py", names)
+        self.assertIn("eth_monitor/sockdiag.py", names)
         self.assertIn("base64 -d", remote_cmd())
 
     def test_local_wrap_preserves_exit_code(self) -> None:

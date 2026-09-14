@@ -25,8 +25,6 @@ TCP_INFO_SENT_MIN = 208
 TX_FIELD_SENT = "bytes_sent"
 TX_FIELD_ACKED = "bytes_acked"
 
-DiagDump = dict  # inode -> TcpBytes
-
 
 @dataclass(frozen=True)
 class TcpBytes:

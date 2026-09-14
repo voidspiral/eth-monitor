@@ -2,9 +2,10 @@ schema: spec-driven
 
 context: |
   Standalone HPC host ethernet monitor (this repo), not ClusterHelm, not
-  mpi-monitor, and not a process-level sniffer. Samples ethernet NIC rx/tx
-  rates into host-level JSONL. Tech stack: Python 3.10+, stdlib first;
-  matplotlib optional for PNG plots.
+  mpi-monitor, and not a packet sniffer. Samples ethernet NIC rx/tx rates into
+  host-level JSONL. Optional --match samples per-PID live TCP rates via
+  sock_diag byte deltas (not UDP/IB, not pcap). Tech stack: Python 3.10+,
+  stdlib first; matplotlib optional for PNG plots.
   TDD: write failing tests before implementation (unittest).
   design.md body stays English. Propose-stage replies include a Chinese
   translation of design.md.

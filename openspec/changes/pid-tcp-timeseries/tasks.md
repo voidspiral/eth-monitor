@@ -21,7 +21,7 @@
 ## 5. CLI wrap / SSH match
 
 - [x] 5.1 Write failing tests that wrap/collect accept `--match` and forward it to local spawn and remote collect argv; omit match keeps previous behavior; verify `python3 -m unittest tests.test_cli tests.test_wrap` fails
-- [ ] 5.2 Implement CLI/wrap/remote tar marker merge into `meta.json` and verify `python3 -m unittest tests.test_cli tests.test_wrap` passes
+- [x] 5.2 Implement CLI/wrap/remote tar marker merge into `meta.json` and verify `python3 -m unittest tests.test_cli tests.test_wrap` passes
 
 ## 6. Docs and full suite
 
