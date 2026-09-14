@@ -1,7 +1,7 @@
 ## 1. Proc match and socket inodes
 
-- [ ] 1.1 Write failing tests for comm substring match, socket inode collection with dedupe, and unreadable PID skip; verify `python3 -m unittest tests.test_proc` fails
-- [ ] 1.2 Implement `eth_monitor.proc` with injectable `proc_root` and verify `python3 -m unittest tests.test_proc` passes
+- [x] 1.1 Write failing tests for comm substring match, socket inode collection with dedupe, and unreadable PID skip; verify `python3 -m unittest tests.test_proc` fails
+- [x] 1.2 Implement `eth_monitor.proc` with injectable `proc_root` and verify `python3 -m unittest tests.test_proc` passes
 
 ## 2. Sock_diag parse and byte rates
 
