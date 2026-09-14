@@ -6,11 +6,11 @@
 ## 2. Sock_diag parse and byte rates
 
 - [x] 2.1 Write failing tests for inet_diag/`tcp_info` parse (IPv4/IPv6, `bytes_sent` vs short-struct `bytes_acked` fallback) and per-inode byte maps; verify `python3 -m unittest tests.test_sockdiag` fails
-- [ ] 2.2 Implement `eth_monitor.sockdiag` dump/parse with injectable `diag_dump` and verify `python3 -m unittest tests.test_sockdiag` passes
+- [x] 2.2 Implement `eth_monitor.sockdiag` dump/parse with injectable `diag_dump` and verify `python3 -m unittest tests.test_sockdiag` passes
 
 ## 3. Collect loop pid JSONL
 
-- [ ] 3.1 Write failing tests: with `--match` writes `series/{host}_pid{pid}_net.jsonl` schema and zero first sample; without match writes no pid files; stop file still exits immediately; verify `python3 -m unittest tests.test_collect` fails
+- [x] 3.1 Write failing tests: with `--match` writes `series/{host}_pid{pid}_net.jsonl` schema and zero first sample; without match writes no pid files; stop file still exits immediately; verify `python3 -m unittest tests.test_collect` fails
 - [ ] 3.2 Extend `collect_loop` / `run_collect` with optional `match`, pid sampling in the same loop, and `tcp_info_partial` marker; verify `python3 -m unittest tests.test_collect` passes
 
 ## 4. Plot split
