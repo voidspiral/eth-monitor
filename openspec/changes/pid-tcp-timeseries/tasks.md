@@ -25,4 +25,4 @@
 
 ## 6. Docs and full suite
 
-- [ ] 6.1 Update README.md / README.zh.md and `openspec/config.yaml` context for optional `--match` and pid-net accuracy; verify `python3 -m unittest discover -s tests` passes
+- [x] 6.1 Update README.md / README.zh.md and `openspec/config.yaml` context for optional `--match` and pid-net accuracy; verify `python3 -m unittest discover -s tests` passes
