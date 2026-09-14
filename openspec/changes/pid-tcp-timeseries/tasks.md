@@ -5,7 +5,7 @@
 
 ## 2. Sock_diag parse and byte rates
 
-- [ ] 2.1 Write failing tests for inet_diag/`tcp_info` parse (IPv4/IPv6, `bytes_sent` vs short-struct `bytes_acked` fallback) and per-inode byte maps; verify `python3 -m unittest tests.test_sockdiag` fails
+- [x] 2.1 Write failing tests for inet_diag/`tcp_info` parse (IPv4/IPv6, `bytes_sent` vs short-struct `bytes_acked` fallback) and per-inode byte maps; verify `python3 -m unittest tests.test_sockdiag` fails
 - [ ] 2.2 Implement `eth_monitor.sockdiag` dump/parse with injectable `diag_dump` and verify `python3 -m unittest tests.test_sockdiag` passes
 
 ## 3. Collect loop pid JSONL
