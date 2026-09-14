@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eth-monitor"
+version = "0.1.0"
+description = "HPC host ethernet rx/tx timeseries collector"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = []
+
+[project.optional-dependencies]
+plot = ["matplotlib"]
+
+[project.scripts]
+eth-monitor = "eth_monitor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
