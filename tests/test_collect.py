@@ -20,6 +20,46 @@ from tests.test_proc import _write_stat
 
 
 class TestCollectLoop(unittest.TestCase):
+    def test_job_scoped_loop_stops_when_seen_match_disappears(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out, sys_root, proc, stop = _pid_setup(tmp)
+            _fake_pid(proc, 42, "app", set())
+            reads = {"n": 0}
+
+            def reader() -> str:
+                reads["n"] += 1
+                if reads["n"] == 1:
+                    for child in (proc / "42" / "fd").iterdir():
+                        child.unlink()
+                    for child in (proc / "42").iterdir():
+                        if child.is_file():
+                            child.unlink()
+                    (proc / "42" / "fd").rmdir()
+                    (proc / "42").rmdir()
+                return NET_DEV
+
+            collect_loop(
+                output_dir=out,
+                stop_file=stop,
+                interval=0.01,
+                host="cn1",
+                match="app",
+                stop_when_match_gone=True,
+                net_dev_reader=reader,
+                sys_class_net=sys_root,
+                proc_root=proc,
+                diag_dump=lambda: {},
+                sleep_fn=lambda _s: None,
+                now_fn=lambda: 1.0,
+                monotonic_fn=lambda: 1.0,
+            )
+
+            rows = (out / "series" / "cn1_net.jsonl").read_text(
+                encoding="utf-8"
+            ).splitlines()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(reads["n"], 1)
+
     def test_stop_file_exits_immediately(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

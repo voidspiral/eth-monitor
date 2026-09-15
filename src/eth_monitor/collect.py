@@ -98,6 +98,7 @@ def collect_loop(
     interval: float,
     host: str,
     match: str | None = None,
+    stop_when_match_gone: bool = False,
     proc_net: Path | None = None,
     sys_class_net: Path | None = None,
     proc_root: Path | None = None,
@@ -114,10 +115,27 @@ def collect_loop(
     dump_fn = diag_dump if diag_dump is not None else dump_tcp_bytes
     prev: _Prev | None = None
     dest = series_path(output_dir, host)
+    matched_once = False
+    consecutive_match_misses = 0
 
     while True:
         if stop_file.exists():
             return
+        matched = []
+        if stop_when_match_gone and match:
+            matched = list_matched_pids(proc, match)
+            if matched:
+                matched_once = True
+                consecutive_match_misses = 0
+            elif matched_once:
+                consecutive_match_misses += 1
+                if consecutive_match_misses >= 2:
+                    return
+                sleep_fn(interval)
+                continue
+            else:
+                sleep_fn(interval)
+                continue
         text = reader()
         counters = parse_net_dev(text)
         ifaces = select_ifaces(counters, sys_class_net=sys_root)
@@ -143,11 +161,12 @@ def collect_loop(
         sockets: dict[SocketKey, tuple[int, int]] = {} if prev is None else dict(prev.sockets)
         pid_mono = prev.pid_mono if prev is not None else None
         if match:
+            if not stop_when_match_gone:
+                matched = list_matched_pids(proc, match)
             try:
                 dumped = dump_fn()
             except OSError:
                 dumped = {}
-            matched = list_matched_pids(proc, match)
             owners = inode_owners(matched)
             pid_mono = monotonic_fn()
             tcp_elapsed = 0.0 if prev is None or prev.pid_mono is None else max(pid_mono - prev.pid_mono, 0.0)
