@@ -8,6 +8,7 @@ from pathlib import Path as _Path
 sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "src"))
 
 import struct
+import sys
 import unittest
 
 from eth_monitor.sockdiag import parse_diag_dump
@@ -34,8 +35,13 @@ def _nlmsg(nl_type: int, payload: bytes) -> bytes:
     return hdr + payload
 
 
-def _inet_diag_msg(inode: int, family: int) -> bytes:
-    sockid = b"\x00" * 48
+def _inet_diag_msg(inode: int, family: int, cookie: tuple[int, int] = (0, 0)) -> bytes:
+    sockid = (
+        struct.pack("HH", 0, 0)
+        + b"\x00" * 32
+        + struct.pack("I", 0)
+        + struct.pack("II", cookie[0], cookie[1])
+    )
     rest = struct.pack("IIIII", 0, 0, 0, 0, inode)
     return bytes((family, 1, 0, 0)) + sockid + rest
 
@@ -63,9 +69,10 @@ def _sock_msg(
     acked: int = 0,
     received: int = 0,
     sent: int | None = None,
+    cookie: tuple[int, int] = (0, 0),
 ) -> bytes:
     info = _tcp_info(acked=acked, received=received, sent=sent)
-    payload = _inet_diag_msg(inode, family) + _rta(INET_DIAG_INFO, info)
+    payload = _inet_diag_msg(inode, family, cookie) + _rta(INET_DIAG_INFO, info)
     return _nlmsg(SOCK_DIAG_BY_FAMILY, payload)
 
 
@@ -96,6 +103,34 @@ class TestSockdiagParse(unittest.TestCase):
     def test_empty_and_truncated_are_empty(self) -> None:
         self.assertEqual(parse_diag_dump(b""), {})
         self.assertEqual(parse_diag_dump(b"\x00\x01"), {})
+
+    def test_parses_socket_cookie(self) -> None:
+        blob = _sock_msg(11, received=1, acked=1, sent=1, cookie=(7, 9)) + _nlmsg(NLMSG_DONE, b"")
+        out = parse_diag_dump(blob)
+        self.assertEqual(out[11].cookie, (7, 9))
+
+    def test_tcp_info_counters_use_native_endian(self) -> None:
+        val = 0x0102030405060708
+        native = "<Q" if sys.byteorder == "little" else ">Q"
+        swapped = ">Q" if sys.byteorder == "little" else "<Q"
+        native_blob = _sock_msg_raw_info(11, received_packed=_pack_u64(native, val)) + _nlmsg(NLMSG_DONE, b"")
+        swapped_blob = _sock_msg_raw_info(12, received_packed=_pack_u64(swapped, val)) + _nlmsg(NLMSG_DONE, b"")
+        native_out = parse_diag_dump(native_blob)
+        swapped_out = parse_diag_dump(swapped_blob)
+        self.assertEqual(native_out[11].rx, val)
+        self.assertNotEqual(swapped_out[12].rx, val)
+
+
+def _pack_u64(fmt: str, value: int) -> bytes:
+    buf = bytearray(136)
+    struct.pack_into("<Q", buf, TCP_INFO_BYTES_ACKED, 0)
+    struct.pack_into(fmt, buf, TCP_INFO_BYTES_RECEIVED, value)
+    return bytes(buf)
+
+
+def _sock_msg_raw_info(inode: int, *, received_packed: bytes) -> bytes:
+    payload = _inet_diag_msg(inode, AF_INET) + _rta(INET_DIAG_INFO, received_packed)
+    return _nlmsg(SOCK_DIAG_BY_FAMILY, payload)
 
 
 if __name__ == "__main__":

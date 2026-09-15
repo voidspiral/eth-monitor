@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from eth_monitor.proc import list_matched_pids, socket_inodes
+from eth_monitor.proc import inode_owners, list_matched_pids, socket_inodes
 
 
 def _pid_dir(proc: Path, pid: int) -> Path:
@@ -21,10 +21,19 @@ def _pid_dir(proc: Path, pid: int) -> Path:
     return d
 
 
-def _write_comm(proc: Path, pid: int, comm: str) -> None:
+def _write_stat(proc: Path, pid: int, comm: str, starttime: int, state: str = "R") -> None:
+    d = proc / str(pid)
+    d.mkdir(parents=True, exist_ok=True)
+    tokens = [state] + ["0"] * 19
+    tokens[19] = str(starttime)
+    (d / "stat").write_text(f"{pid} ({comm}) " + " ".join(tokens) + "\n", encoding="utf-8")
+
+
+def _write_comm(proc: Path, pid: int, comm: str, starttime: int = 1000) -> None:
     d = _pid_dir(proc, pid) if not (proc / str(pid)).is_dir() else proc / str(pid)
     (d / "fd").mkdir(exist_ok=True)
     (d / "comm").write_text(comm + "\n", encoding="utf-8")
+    _write_stat(proc, pid, comm, starttime)
 
 
 def _link_fd(proc: Path, pid: int, fd: int, target: str) -> None:
@@ -72,6 +81,36 @@ class TestProcMatch(unittest.TestCase):
             _write_comm(proc, 3, "app")
             self.assertEqual(list_matched_pids(proc, ""), [])
             self.assertEqual(list_matched_pids(proc, None), [])
+
+    def test_starttime_parses_comm_with_spaces_and_parentheses(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp)
+            comm = "my app (worker)"
+            _write_comm(proc, 4, comm, starttime=4242)
+            found = list_matched_pids(proc, "my app")
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0].pid, 4)
+            self.assertEqual(found[0].starttime_ticks, 4242)
+
+    def test_missing_stat_skips_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp)
+            _write_comm(proc, 8, "app", starttime=1)
+            (proc / "8" / "stat").unlink()
+            self.assertEqual(list_matched_pids(proc, "app"), [])
+
+    def test_shared_inode_owner_is_lowest_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp)
+            _write_comm(proc, 20, "app", starttime=2)
+            _write_comm(proc, 10, "app", starttime=1)
+            _link_fd(proc, 10, 3, "socket:[5]")
+            _link_fd(proc, 20, 3, "socket:[5]")
+            _link_fd(proc, 20, 4, "socket:[9]")
+            matched = list_matched_pids(proc, "app")
+            owners = inode_owners(matched)
+            self.assertEqual(owners[5], 10)
+            self.assertEqual(owners[9], 20)
 
 
 if __name__ == "__main__":

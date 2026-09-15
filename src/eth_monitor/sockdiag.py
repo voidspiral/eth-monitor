@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import struct
+import sys
 from dataclasses import dataclass
 
 NETLINK_SOCK_DIAG = 4
@@ -24,6 +25,9 @@ TCP_INFO_RX_MIN = 136
 TCP_INFO_SENT_MIN = 208
 TX_FIELD_SENT = "bytes_sent"
 TX_FIELD_ACKED = "bytes_acked"
+_U64 = "<Q" if sys.byteorder == "little" else ">Q"
+_SOCKID_COOKIE_OFF = 40
+_MSG_COOKIE_OFF = 4 + _SOCKID_COOKIE_OFF
 
 
 @dataclass(frozen=True)
@@ -32,21 +36,26 @@ class TcpBytes:
     tx: int
     tx_field: str
     partial: bool
+    cookie: tuple[int, int] = (0, 0)
 
 
 def _align(n: int, to: int = 4) -> int:
     return (n + to - 1) & ~(to - 1)
 
 
-def _parse_tcp_info(info: bytes) -> TcpBytes | None:
+def _u64(buf: bytes, offset: int) -> int:
+    return struct.unpack_from(_U64, buf, offset)[0]
+
+
+def _parse_tcp_info(info: bytes, cookie: tuple[int, int]) -> TcpBytes | None:
     if len(info) < TCP_INFO_RX_MIN:
         return None
-    rx = struct.unpack_from("<Q", info, TCP_INFO_BYTES_RECEIVED)[0]
+    rx = _u64(info, TCP_INFO_BYTES_RECEIVED)
     if len(info) >= TCP_INFO_SENT_MIN:
-        tx = struct.unpack_from("<Q", info, TCP_INFO_BYTES_SENT)[0]
-        return TcpBytes(rx=rx, tx=tx, tx_field=TX_FIELD_SENT, partial=False)
-    acked = struct.unpack_from("<Q", info, TCP_INFO_BYTES_ACKED)[0]
-    return TcpBytes(rx=rx, tx=acked, tx_field=TX_FIELD_ACKED, partial=True)
+        tx = _u64(info, TCP_INFO_BYTES_SENT)
+        return TcpBytes(rx=rx, tx=tx, tx_field=TX_FIELD_SENT, partial=False, cookie=cookie)
+    acked = _u64(info, TCP_INFO_BYTES_ACKED)
+    return TcpBytes(rx=rx, tx=acked, tx_field=TX_FIELD_ACKED, partial=True, cookie=cookie)
 
 
 def _parse_attrs(blob: bytes) -> bytes | None:
@@ -78,8 +87,11 @@ def parse_diag_dump(data: bytes) -> dict[int, TcpBytes]:
         payload = data[offset + NLMSG_HDRLEN : offset + nl_len]
         if len(payload) >= INET_DIAG_MSG_LEN:
             inode = struct.unpack_from("I", payload, INET_DIAG_MSG_LEN - 4)[0]
+            cookie = (0, 0)
+            if len(payload) >= _MSG_COOKIE_OFF + 8:
+                cookie = struct.unpack_from("II", payload, _MSG_COOKIE_OFF)
             info = _parse_attrs(payload[INET_DIAG_MSG_LEN:])
-            parsed = _parse_tcp_info(info) if info is not None else None
+            parsed = _parse_tcp_info(info, cookie) if info is not None else None
             if parsed is not None and inode:
                 out[inode] = parsed
         offset = next_off

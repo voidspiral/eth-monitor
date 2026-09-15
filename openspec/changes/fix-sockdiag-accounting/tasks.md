@@ -1,7 +1,7 @@
 ## 1. Process identity and shared owners
 
-- [ ] 1.1 Write failing tests for `/proc/<pid>/stat` starttime (comm with spaces/parentheses), unreadable stat skip, and lowest-PID owner of a shared inode; verify `python3 -m unittest tests.test_proc` fails
-- [ ] 1.2 Implement `eth_monitor.proc` starttime parse and shared-inode owner map; verify `python3 -m unittest tests.test_proc` passes
+- [x] 1.1 Write failing tests for `/proc/<pid>/stat` starttime (comm with spaces/parentheses), unreadable stat skip, and lowest-PID owner of a shared inode; verify `python3 -m unittest tests.test_proc` fails
+- [x] 1.2 Implement `eth_monitor.proc` starttime parse and shared-inode owner map; verify `python3 -m unittest tests.test_proc` passes
 
 ## 2. Sock_diag cookie and endian
 
