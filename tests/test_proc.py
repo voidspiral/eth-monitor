@@ -36,11 +36,31 @@ def _write_comm(proc: Path, pid: int, comm: str, starttime: int = 1000) -> None:
     _write_stat(proc, pid, comm, starttime)
 
 
+def _write_cmdline(proc: Path, pid: int, *argv: str) -> None:
+    (proc / str(pid) / "cmdline").write_bytes(
+        b"\0".join(arg.encode("utf-8") for arg in argv) + b"\0"
+    )
+
+
 def _link_fd(proc: Path, pid: int, fd: int, target: str) -> None:
     os.symlink(target, proc / str(pid) / "fd" / str(fd))
 
 
 class TestProcMatch(unittest.TestCase):
+    def test_long_binary_name_matches_argv0_when_comm_is_truncated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp)
+            _write_comm(proc, 13, "mpi_fault_segfa")
+            _write_cmdline(
+                proc,
+                13,
+                "/shared/agent-sidecar/examples/mpi_fault_segfault",
+                "10",
+                "0",
+            )
+            found = list_matched_pids(proc, "mpi_fault_segfault")
+            self.assertEqual([item.pid for item in found], [13])
+
     def test_match_is_case_sensitive_substring(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             proc = Path(tmp)

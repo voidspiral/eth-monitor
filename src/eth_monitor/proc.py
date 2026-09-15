@@ -9,6 +9,8 @@ from pathlib import Path
 
 _SOCKET_PREFIX = "socket:["
 _STARTTIME_INDEX = 19  # 0-based field after comm in /proc/<pid>/stat
+_INTERPRETER_NAMES = {"bash", "sh", "dash", "perl", "ruby"}
+_INTERPRETER_SKIP_NEXT = {"-c", "-m"}
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,40 @@ def _read_comm(proc_root: Path, pid: int) -> str | None:
     except OSError:
         return None
     return text.strip()
+
+
+def _read_cmdline(proc_root: Path, pid: int) -> tuple[str, ...]:
+    try:
+        raw = (proc_root / str(pid) / "cmdline").read_bytes()
+    except OSError:
+        return ()
+    return tuple(
+        item.decode("utf-8", "replace")
+        for item in raw.split(b"\0")
+        if item
+    )
+
+
+def _basename(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _is_interpreter(token: str) -> bool:
+    name = _basename(token)
+    return name.startswith("python") or name in _INTERPRETER_NAMES
+
+
+def _process_matches(comm: str, argv: tuple[str, ...], match: str) -> bool:
+    if match in comm:
+        return True
+    if argv and match in argv[0]:
+        return True
+    return bool(
+        len(argv) >= 2
+        and _is_interpreter(argv[0])
+        and argv[1] not in _INTERPRETER_SKIP_NEXT
+        and match in argv[1]
+    )
 
 
 def read_starttime_ticks(proc_root: Path, pid: int) -> int | None:
@@ -81,7 +117,9 @@ def list_matched_pids(proc_root: Path, match: str | None) -> list[MatchedPid]:
             continue
         pid = int(name)
         comm = _read_comm(proc_root, pid)
-        if comm is None or match not in comm:
+        if comm is None or not _process_matches(
+            comm, _read_cmdline(proc_root, pid), match
+        ):
             continue
         starttime = read_starttime_ticks(proc_root, pid)
         if starttime is None:
