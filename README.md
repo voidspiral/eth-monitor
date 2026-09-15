@@ -43,9 +43,41 @@ eth-monitor wrap \
 - Exit status is the wrapped command's exit status.
 - Local hostname (and `localhost`) runs the collector in-process; other names
   are reached with SSH (`--ssh-user`, `--ssh-identity` if needed).
-- PID TCP rates cover live TCP sockets at sample time. Short connections, UDP,
-  and InfiniBand are not counted. Values are kernel TCP payload-class counters
-  and are typically smaller than `eth_*_bps`.
+
+## How sampling works
+
+Host ethernet and per-PID TCP are two different counters. They are not the
+same number, and PID rates are not a split of the NIC curve.
+
+**Host ethernet** (`series/{host}_net.jsonl`) reads Linux `/proc/net/dev`
+once per interval. Rates are byte deltas of the NIC's cumulative `rx`/`tx`
+bytes, divided by elapsed seconds. The first sample for an iface is `0`.
+This is the full interface (headers, other tenants, non-TCP), not a process.
+
+**Per-PID TCP** (`series/{host}_pid{pid}_net.jsonl`, needs `--match`) uses
+**sock_diag byte deltas**, not packet capture:
+
+1. Match PIDs by `/proc/<pid>/comm` substring.
+2. Read `/proc/<pid>/stat` starttime so a reused PID is a new instance.
+3. Collect `socket:[inode]` links from `/proc/<pid>/fd`.
+4. Dump live TCP sockets with `NETLINK_SOCK_DIAG` / `INET_DIAG` (`tcp_info`),
+   keyed by inode plus kernel socket cookie.
+5. If several matched PIDs share an inode, only the **lowest PID** owns it.
+6. Difference **each live socket**, then sum. A new socket on a known process
+   contributes its current cumulative bytes this interval. A closed socket is
+   dropped (its last interval is lost) and does not cancel other sockets.
+7. Rate = `max(delta, 0) / monotonic_elapsed`. The first sample for a process
+   instance is `0`.
+
+Tx prefers `tcp_info` `bytes_sent`; if that field is missing on older kernels,
+it falls back to `bytes_acked` and wrap records `tcp_info_partial` in
+`meta.json`. Rx uses `bytes_received`. Compute nodes need `python3` and
+`/proc`, not `ss` or `nethogs`.
+
+This only covers **TCP sockets that still exist at sample time**. Connections
+that open, transfer, and close between samples, plus UDP, InfiniBand/RDMA, and
+Ethernet/IP headers, are not counted, so `tcp_*_bps` is typically smaller than
+`eth_*_bps`. It is process-level TCP accounting, not a sniffer.
 
 ## Output layout
 
@@ -61,9 +93,10 @@ eth-monitor wrap \
 ```
 
 Host JSONL lines include `ts`, `host`, `iface`, `eth_rx_bps`, `eth_tx_bps`.
-Pid-net lines include `ts`, `host`, `pid`, `comm`, `tcp_rx_bps`, `tcp_tx_bps`
-when `--match` is set. Included interfaces are up ethernet (or bond master)
-devices. Loopback, IB, veth, and bond slaves are excluded.
+Pid-net lines include `ts`, `host`, `pid`, `comm`, `process_starttime_ticks`,
+`tcp_rx_bps`, `tcp_tx_bps` when `--match` is set. Included interfaces are up
+ethernet (or bond master) devices. Loopback, IB, veth, and bond slaves are
+excluded.
 
 ## Other commands
 
