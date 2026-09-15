@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from eth_monitor.net import NetCounters, parse_net_dev, select_ifaces
-from eth_monitor.proc import list_matched_pids
+from eth_monitor.proc import inode_owners, list_matched_pids
 from eth_monitor.sockdiag import TcpBytes, dump_tcp_bytes
 
 SAMPLE_KEYS = (
@@ -25,6 +25,7 @@ PID_SAMPLE_KEYS = (
     "host",
     "pid",
     "comm",
+    "process_starttime_ticks",
     "tcp_rx_bps",
     "tcp_tx_bps",
 )
@@ -33,6 +34,7 @@ NetDevReader = Callable[[], str]
 DiagDumpFn = Callable[[], dict[int, TcpBytes]]
 SleepFn = Callable[[float], None]
 NowFn = Callable[[], float]
+SocketKey = tuple[int, int, int, tuple[int, int]]
 
 
 def series_filename(host: str) -> str:
@@ -61,7 +63,9 @@ def append_sample(path: Path, sample: dict[str, Any]) -> None:
 class _Prev:
     ts: float
     counters: dict[str, NetCounters]
-    pid_bytes: dict[int, tuple[int, int]]
+    pid_mono: float | None
+    seen_procs: set[tuple[int, int]]
+    sockets: dict[SocketKey, tuple[int, int]]
 
 
 def _bps(prev: int, cur: int, elapsed: float) -> float:
@@ -101,6 +105,7 @@ def collect_loop(
     diag_dump: DiagDumpFn | None = None,
     sleep_fn: SleepFn = time.sleep,
     now_fn: NowFn = time.time,
+    monotonic_fn: NowFn = time.monotonic,
 ) -> None:
     proc_net = proc_net if proc_net is not None else Path("/proc/net/dev")
     sys_root = sys_class_net if sys_class_net is not None else Path("/sys/class/net")
@@ -134,38 +139,66 @@ def collect_loop(
                 if key not in sample:
                     raise ValueError(f"sample missing {key}")
             append_sample(dest, sample)
-        pid_bytes: dict[int, tuple[int, int]] = {} if prev is None else dict(prev.pid_bytes)
+        seen_procs: set[tuple[int, int]] = set() if prev is None else set(prev.seen_procs)
+        sockets: dict[SocketKey, tuple[int, int]] = {} if prev is None else dict(prev.sockets)
+        pid_mono = prev.pid_mono if prev is not None else None
         if match:
             try:
                 dumped = dump_fn()
             except OSError:
                 dumped = {}
-            for matched in list_matched_pids(proc, match):
-                rx = 0
-                tx = 0
-                for inode in matched.inodes:
+            matched = list_matched_pids(proc, match)
+            owners = inode_owners(matched)
+            pid_mono = monotonic_fn()
+            tcp_elapsed = 0.0 if prev is None or prev.pid_mono is None else max(pid_mono - prev.pid_mono, 0.0)
+            seen_procs = set()
+            sockets = {}
+            for item in matched:
+                instance = (item.pid, item.starttime_ticks)
+                seen_procs.add(instance)
+                known = prev is not None and instance in prev.seen_procs
+                drx = 0
+                dtx = 0
+                for inode in item.inodes:
+                    if owners.get(inode) != item.pid:
+                        continue
                     counters_tcp = dumped.get(inode)
                     if counters_tcp is None:
                         continue
-                    rx += counters_tcp.rx
-                    tx += counters_tcp.tx
                     if counters_tcp.partial:
                         _write_partial_marker(output_dir)
-                old_pid = None if prev is None else prev.pid_bytes.get(matched.pid)
+                    cookie = counters_tcp.cookie
+                    key = (item.pid, item.starttime_ticks, inode, cookie)
+                    sockets[key] = (counters_tcp.rx, counters_tcp.tx)
+                    if not known:
+                        continue
+                    old_sock = prev.sockets.get(key) if prev is not None else None
+                    if old_sock is None:
+                        drx += counters_tcp.rx
+                        dtx += counters_tcp.tx
+                    else:
+                        drx += max(counters_tcp.rx - old_sock[0], 0)
+                        dtx += max(counters_tcp.tx - old_sock[1], 0)
                 pid_sample = {
                     "ts": ts,
                     "host": host,
-                    "pid": matched.pid,
-                    "comm": matched.comm,
-                    "tcp_rx_bps": 0.0 if old_pid is None else _bps(old_pid[0], rx, elapsed),
-                    "tcp_tx_bps": 0.0 if old_pid is None else _bps(old_pid[1], tx, elapsed),
+                    "pid": item.pid,
+                    "comm": item.comm,
+                    "process_starttime_ticks": item.starttime_ticks,
+                    "tcp_rx_bps": 0.0 if (not known or tcp_elapsed <= 0) else drx / tcp_elapsed,
+                    "tcp_tx_bps": 0.0 if (not known or tcp_elapsed <= 0) else dtx / tcp_elapsed,
                 }
-                for key in PID_SAMPLE_KEYS:
-                    if key not in pid_sample:
-                        raise ValueError(f"sample missing {key}")
-                append_sample(pid_series_path(output_dir, host, matched.pid), pid_sample)
-                pid_bytes[matched.pid] = (rx, tx)
-        prev = _Prev(ts=ts, counters=counters, pid_bytes=pid_bytes)
+                for key_name in PID_SAMPLE_KEYS:
+                    if key_name not in pid_sample:
+                        raise ValueError(f"sample missing {key_name}")
+                append_sample(pid_series_path(output_dir, host, item.pid), pid_sample)
+        prev = _Prev(
+            ts=ts,
+            counters=counters,
+            pid_mono=pid_mono,
+            seen_procs=seen_procs,
+            sockets=sockets,
+        )
         sleep_fn(interval)
 
 

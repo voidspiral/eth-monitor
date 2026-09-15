@@ -55,10 +55,11 @@ def _rta(rta_type: int, data: bytes) -> bytes:
 def _tcp_info(*, acked: int, received: int, sent: int | None) -> bytes:
     size = 208 if sent is not None else 136
     buf = bytearray(size)
-    struct.pack_into("<Q", buf, TCP_INFO_BYTES_ACKED, acked)
-    struct.pack_into("<Q", buf, TCP_INFO_BYTES_RECEIVED, received)
+    fmt = "<Q" if sys.byteorder == "little" else ">Q"
+    struct.pack_into(fmt, buf, TCP_INFO_BYTES_ACKED, acked)
+    struct.pack_into(fmt, buf, TCP_INFO_BYTES_RECEIVED, received)
     if sent is not None:
-        struct.pack_into("<Q", buf, TCP_INFO_BYTES_SENT, sent)
+        struct.pack_into(fmt, buf, TCP_INFO_BYTES_SENT, sent)
     return bytes(buf)
 
 
